@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000080">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PMJ Tools">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>PMJ Solutions Tools</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#008080;font:14px "Courier New",monospace;color:#000;padding:8px;padding-top:max(8px,env(safe-area-inset-top))}
+.win{max-width:980px;margin:0 auto;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:2px 2px 0 #000}
+.bar{background:#000080;color:#fff;font-weight:bold;padding:6px 8px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+.pad{padding:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:12px}
+.tile,.btn,.sm{font:bold 14px "Courier New",monospace;background:#c0c0c0;color:#000;border:3px solid;border-color:#fff #404040 #404040 #fff;cursor:pointer}
+.tile:active,.btn:active,.sm:active{border-color:#404040 #fff #fff #404040}
+.tile{padding:14px 6px;text-align:center}
+.tile .ic{display:block;font-size:38px;margin-bottom:4px}
+.tile small{display:block;font-weight:normal;margin-top:4px}
+.btn{padding:10px 14px;margin:4px 4px 0 0}
+.btn.go{background:#00a000;color:#fff}
+.sm{padding:3px 8px;border-width:2px;font-size:13px;margin-right:3px}
+label{display:block;font-weight:bold;margin:8px 0 2px}
+label.chk{display:inline-block;margin:6px 10px 0 0}
+input,select,textarea{width:100%;padding:8px;font:16px "Courier New",monospace;border:2px solid;border-color:#404040 #fff #fff #404040;background:#fff;color:#000}
+input[type=checkbox]{width:auto;vertical-align:middle}
+#fm{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 12px}
+.tool{border-top:2px solid #808080;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tool input#q{width:200px;flex:none}
+.wrap{overflow-x:auto;margin:0 10px 10px;border:2px solid;border-color:#404040 #fff #fff #404040;background:#fff;max-height:60vh;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{background:#000080;color:#fff;position:sticky;top:0;text-align:left;padding:4px 6px;white-space:nowrap}
+td{border-bottom:1px solid #c0c0c0;padding:4px 6px;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+td.r{text-align:right}
+tr.done td{color:#006000}
+td.act{white-space:nowrap}
+.msg{margin-top:8px;padding:8px;border:2px dashed #000;text-align:center;font-weight:bold}
+.hide{display:none}
+.foot{font-size:12px}.who{font-weight:normal;font-size:12px;margin-left:auto;text-align:right}.sec{border-top:2px solid #808080;margin-top:10px;padding-top:6px}.ur{display:flex;justify-content:space-between;align-items:center;background:#fff;border:2px solid;border-color:#404040 #fff #fff #404040;padding:6px 8px;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<input type="file" id="file" accept=".json" class="hide">
+
+<script src="xlsx.full.min.js"></script>
+<script>
+/* =====================================================================
+   TOOL DEFINITIONS  -  edit this list to change fields or add tools.
+   Field options:
+     k    internal key (unique in the tool)      l    column label
+     t    'number' | 'tel' | 'area'  (default text)
+     o    ['A','B']  makes it a dropdown (also grouped in the summary)
+     g:1  group the summary by this field        req:1  required
+     up:1 force UPPERCASE     pat  regex the value must match
+     calc function(record) -> value, auto-calculated, not typed in
+   Tool options:
+     flow ['STEP1','STEP2',...]  adds a status with a button to move
+          each record to the next step (time stamped for each step)
+   You can also add tools from the menu with  + NEW TOOL  (no coding).
+   ===================================================================== */
+const CONFIG=[
+{id:"stock",name:"STOCK CHECKER",ic:"\u{1F4E6}",fields:[
+ {k:"code",l:"ITEM CODE",req:1,up:1},{k:"item",l:"ITEM NAME"},{k:"loc",l:"LOCATION",g:1,up:1},
+ {k:"sys",l:"SYSTEM QTY",t:"number"},{k:"phy",l:"PHYSICAL QTY",t:"number"},
+ {k:"var",l:"VARIANCE",calc:r=>(+r.phy||0)-(+r.sys||0)},{k:"rem",l:"REMARKS"}]},
+{id:"vehicle",name:"VEHICLE ENTRY",ic:"\u{1F69A}",flow:["INSIDE","OUT"],fields:[
+ {k:"veh",l:"VEHICLE NO",req:1,up:1},{k:"drv",l:"DRIVER"},{k:"ph",l:"PHONE",t:"tel",pat:"\\d{10}"},
+ {k:"purpose",l:"PURPOSE",o:["LOADING","UNLOADING","VISIT","OTHER"]},{k:"party",l:"PARTY"},{k:"rem",l:"REMARKS"}]},
+{id:"issues",name:"DISCREPANCY TRACKER",ic:"\u{1F4DD}",flow:["OPEN","RESOLVED"],fields:[
+ {k:"ref",l:"REF / INVOICE",req:1,up:1},{k:"party",l:"PARTY"},
+ {k:"type",l:"TYPE",o:["SHORT","EXCESS","DAMAGE","WRONG ITEM","OTHER"]},
+ {k:"qty",l:"QTY",t:"number"},{k:"desc",l:"DETAILS",t:"area"},{k:"by",l:"RAISED BY"}]},
+{id:"gate",name:"GATE LOG (NFC)",ic:"\u{1F6C2}",flow:["INSIDE","OUT","DELIVERED"],fields:[
+ {k:"veh",l:"VEHICLE NO",req:1,up:1},{k:"ph",l:"PHONE",t:"tel",pat:"\\d{10}"},
+ {k:"cust",l:"CUSTOMERS",t:"area"}]}
+];
+
+/* ============================ ENGINE ============================ */
+const $=s=>document.querySelector(s);
+const E=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=i=>i?new Date(i).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"2-digit",hour:"2-digit",minute:"2-digit",hour12:true}):"";
+const today=()=>new Date().toISOString().slice(0,10);
+const now=()=>new Date().toISOString();
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const L=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}};
+let S={data:L("pmj_data",{}),custom:L("pmj_custom",[]),users:L("pmj_users",[]),cfg:L("pmj_cfg",{}),dirty:L("pmj_dirty",{}),since:L("pmj_since",0),sync:L("pmj_sync",{}),ask:L("pmj_ask",0)};
+S.me=sessionStorage.getItem("pmj_me")||(S.ask?"":localStorage.getItem("pmj_me")||"");
+let cur=null,edit=null,q="",err="",busy=0,tm=0,syncedAt="",page="";
+function save(){try{["data","custom","users","cfg","dirty","since","sync","ask"].forEach(k=>localStorage.setItem("pmj_"+k,JSON.stringify(S[k])))}catch(e){alert("CANNOT SAVE (storage blocked or full). EXPORT YOUR DATA NOW.")}}
+const tools=()=>CONFIG.concat(S.custom.filter(t=>!t.del));
+const T=id=>tools().find(t=>t.id===id);
+const raw=t=>S.data[t.id]||(S.data[t.id]=[]);
+const rows=t=>raw(t).filter(r=>!r.del);
+function touch(tool,rec){rec.upd=now();S.dirty[rec.id]=tool;save();syncSoon()}
+const inputF=t=>t.fields.filter(f=>!f.calc);
+const numF=t=>t.fields.filter(f=>f.calc||f.t==="number");
+const grpF=t=>t.fields.filter(f=>f.g||f.o);
+const stIdx=r=>r.st||0;
+
+function cols(t){
+ const c=[{l:"WHEN",v:r=>fmt(r.ts)},{l:"USER",v:r=>r.by||""}];
+ t.fields.forEach(f=>c.push({l:f.l,n:f.calc||f.t==="number",v:r=>r[f.k]==null?"":r[f.k]}));
+ if(t.flow){c.push({l:"STATUS",v:r=>t.flow[stIdx(r)]});t.flow.forEach((s,i)=>{if(i)c.push({l:s+" AT",v:r=>fmt(r["t"+i])})})}
+ return c;
+}
+
+function summary(t){
+ const R=rows(t),N=numF(t),sm=(a,f)=>a.reduce((s,r)=>s+(+r[f.k]||0),0);
+ const o=[[t.name+" - SUMMARY"],["GENERATED",fmt(new Date().toISOString())],["TOTAL RECORDS",R.length]];
+ if(R.length){const d=R.map(r=>r.ts).sort();o.push(["FIRST ENTRY",fmt(d[0])],["LAST ENTRY",fmt(d[d.length-1])])}
+ N.forEach(f=>o.push(["TOTAL "+f.l,sm(R,f)]));
+ const G=grpF(t).map(f=>({l:f.l,g:r=>r[f.k]||"(BLANK)"}));
+ if(t.flow)G.push({l:"STATUS",g:r=>t.flow[stIdx(r)]});
+ G.forEach(g=>{
+  o.push([],["BY "+g.l,"COUNT"].concat(N.map(f=>"SUM "+f.l)));
+  const m={};R.forEach(r=>{const k=g.g(r);(m[k]=m[k]||[]).push(r)});
+  Object.keys(m).sort().forEach(k=>o.push([k,m[k].length].concat(N.map(f=>sm(m[k],f)))));
+ });
+ return o;
+}
+
+function exportX(list,withSum){
+ if(typeof XLSX==="undefined")return msg("EXCEL LIBRARY NOT LOADED. CONNECT TO INTERNET ONCE AND RELOAD.",0);
+ const wb=XLSX.utils.book_new(),nm=t=>t.name.replace(/[\[\]:*?\/\\]/g,"");
+ list.forEach(t=>{
+  const cs=cols(t);
+  const ws=XLSX.utils.aoa_to_sheet([cs.map(c=>c.l)].concat(rows(t).map(r=>cs.map(c=>c.v(r)))));
+  ws["!cols"]=cs.map(c=>({wch:Math.max(c.l.length+2,14)}));
+  XLSX.utils.book_append_sheet(wb,ws,nm(t).slice(0,31));
+  if(withSum){const s=XLSX.utils.aoa_to_sheet(summary(t));s["!cols"]=[{wch:28},{wch:14},{wch:14},{wch:14},{wch:14}];
+   XLSX.utils.book_append_sheet(wb,s,("SUM "+nm(t)).slice(0,31))}
+ });
+ XLSX.writeFile(wb,"PMJ_"+(list.length>1?"ALL":list[0].id)+"_"+today()+".xlsx");
+ msg("EXPORTED"+(withSum?" WITH SUMMARY":""),1);
+}
+
+function msg(t,ok){const m=$("#msg");if(!m)return;m.textContent=t;m.classList.remove("hide");m.style.background=ok?"#90ee90":"#ff9090"}
+
+/* ============================ SCREENS ============================ */
+function hdr(title,back){
+ return'<div class="bar">'+(back?'<button class="sm" id="back">&#9668; MENU</button>':"")+title+
+ '<span class="who">USER: '+E(S.me)+' <button class="sm" id="sw">SWITCH</button><br><span id="stat"></span></span></div>';
+}
+function stat(){
+ const e=$("#stat");if(!e)return;const n=Object.keys(S.dirty).length;
+ e.textContent=!S.sync.url?"SYNC: NOT SET UP":err?"SYNC ERROR - SAVED ON DEVICE ("+n+" PENDING)":n?"PENDING: "+n:"SYNCED "+(syncedAt?fmt(syncedAt):"");
+}
+function home(){
+ cur=null;page="home";
+ $("#app").innerHTML='<div class="win">'+hdr("C:\\PMJ\\TOOLS.EXE",0)+'<div class="grid">'+
+ tools().map(t=>'<button class="tile" data-k="'+t.id+'"><span class="ic">'+t.ic+'</span>'+E(t.name)+'<small>'+rows(t).length+' RECORDS</small></button>').join("")+
+ '</div><div class="pad"><label class="chk"><input type="checkbox" id="sumAll" checked> INCLUDE SUMMARY SHEETS</label><br>'+
+ '<button class="btn" id="expAll">EXPORT ALL TO EXCEL</button><button class="btn" id="newT">+ NEW TOOL</button>'+
+ '<button class="btn" id="syncNow">SYNC NOW</button><button class="btn" id="bak">BACKUP</button><button class="btn" id="res">RESTORE</button>'+
+ '<button class="btn" id="setBtn">SETTINGS / USERS</button><div id="msg" class="msg hide"></div></div></div>';
+}
+function login(){
+ cur=null;page="login";
+ $("#app").innerHTML='<div class="win"><div class="bar">C:\\PMJ\\LOGIN.EXE</div><div class="pad"><b>WHO ARE YOU?</b><div class="grid">'+
+ S.users.filter(u=>!u.rm).sort((a,b)=>a.name<b.name?-1:1).map(u=>'<button class="tile" data-u="'+E(u.name)+'">'+E(u.name)+"</button>").join("")+
+ '</div><label>OR TYPE YOUR NAME</label><input id="nu" autocapitalize="characters" autocomplete="off">'+
+ '<button class="btn go" id="nuGo">&#9658; ENTER</button><button class="btn" id="setBtn">SETTINGS</button><div id="msg" class="msg hide"></div></div></div>';
+}
+function enter(n){
+ n=n.trim().toUpperCase().replace(/\s+/g," ");
+ if(n.length<2)return msg("ENTER YOUR NAME",0);
+ let u=S.users.find(x=>x.name===n);
+ if(u&&u.rm)return msg("THIS USER WAS REMOVED. ASK THE ADMIN.",0);
+ if(!u){u={id:uid(),name:n};S.users.push(u);touch("_users",u)}
+ S.me=n;sessionStorage.setItem("pmj_me",n);if(!S.ask)localStorage.setItem("pmj_me",n);
+ route();
+}
+function logout(){S.me="";sessionStorage.removeItem("pmj_me");localStorage.removeItem("pmj_me");route()}
+function checkMe(){const u=S.users.find(x=>x.name===S.me);if(S.me&&u&&u.rm)logout()}
+function settings(){
+ cur=null;page="set";
+ $("#app").innerHTML='<div class="win">'+(S.me?hdr("SETTINGS",1):'<div class="bar"><button class="sm" id="back">&#9668; BACK</button>SETTINGS</div>')+
+ '<div class="pad"><b>GOOGLE SHEET SYNC</b><label>APPS SCRIPT URL</label><input id="sUrl" value="'+E(S.sync.url||"")+'">'+
+ '<label>SECRET KEY</label><input id="sKey" type="password" value="'+E(S.sync.key||"")+'">'+
+ '<button class="btn go" id="sSave">SAVE &amp; SYNC NOW</button><div id="msg" class="msg hide"></div>'+
+ '<div class="sec"><label class="chk"><input type="checkbox" id="ask"'+(S.ask?" checked":"")+'> ASK NAME EVERY TIME THE APP IS OPENED (SHARED DEVICE)</label></div>'+
+ '<div class="sec"><b>ADMIN</b><br><button class="btn" id="usr">MANAGE USERS</button><button class="btn" id="pin">CHANGE ADMIN PIN</button></div></div></div>';
+}
+function ulist(rm){
+ return S.users.filter(u=>!!u.rm===rm).sort((a,b)=>a.name<b.name?-1:1).map(u=>'<div class="ur"><span>'+E(u.name)+'</span><button class="sm" data-ua="'+(rm?"restore":"remove")+'" data-id="'+u.id+'">'+(rm?"RESTORE":"REMOVE")+"</button></div>").join("")||'<div class="foot">NONE</div>';
+}
+function users(){
+ cur=null;page="users";
+ $("#app").innerHTML='<div class="win">'+hdr("USERS",1)+'<div class="pad"><b>ACTIVE USERS</b>'+ulist(false)+
+ '<div class="sec"><b>REMOVED USERS</b>'+ulist(true)+'</div><p class="foot">REMOVED USERS CANNOT LOG IN. THEIR OLD RECORDS STAY IN THE LOG.</p></div></div>';
+}
+async function hash(s){
+ try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("pmj"+s));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+ catch(e){return btoa("pmj"+s)}
+}
+async function admin(){
+ if(!S.cfg.pin){
+  if(S.sync.url&&!S.since){alert("SYNC FIRST (SAVE & SYNC NOW), THEN TRY AGAIN.");return false}
+  const p=prompt("NO ADMIN PIN YET. SET A PIN (4 OR MORE DIGITS):");if(!p||p.length<4)return false;
+  S.cfg={id:"admin",pin:await hash(p)};touch("_cfg",S.cfg);return true;
+ }
+ const p=prompt("ADMIN PIN:");return!!p&&(await hash(p))===S.cfg.pin;
+}
+function field(f){
+ const id="f_"+f.k;
+ if(f.o)return'<select id="'+id+'"><option value=""></option>'+f.o.map(o=>"<option>"+E(o)+"</option>").join("")+"</select>";
+ if(f.t==="area")return'<textarea id="'+id+'" rows="3"></textarea>';
+ return'<input id="'+id+'" type="'+(f.t==="number"?"number":f.t==="tel"?"tel":"text")+'"'+
+  (f.t==="number"?' step="any" inputmode="decimal"':"")+(f.t==="tel"?' inputmode="numeric" maxlength="10"':"")+
+  (f.up?' autocapitalize="characters"':"")+' autocomplete="off">';
+}
+
+function view(id){
+ cur=id;edit=null;q="";page="tool";const t=T(id);
+ $("#app").innerHTML='<div class="win">'+hdr(E(t.name),1)+
+ '<div class="pad"><div id="fm">'+inputF(t).map(f=>"<div><label>"+E(f.l)+(f.req?" *":"")+"</label>"+field(f)+"</div>").join("")+"</div>"+
+ '<button class="btn go" id="save">&#9658; ADD</button><button class="btn hide" id="cancel">CANCEL EDIT</button><div id="msg" class="msg hide"></div></div>'+
+ '<div class="pad tool"><input id="q" placeholder="SEARCH..."><b id="cnt"></b>'+
+ '<label class="chk"><input type="checkbox" id="sum" checked> SUMMARY SHEET</label><button class="btn" id="exp">EXPORT TO EXCEL</button></div>'+
+ '<div class="wrap"><table id="tb"></table></div>'+
+ '<div class="pad foot"><button class="sm" id="clr">CLEAR ALL RECORDS</button>'+(t.custom?'<button class="sm" id="delT">DELETE THIS TOOL</button>':"")+"</div></div>";
+ tbl();
+}
+
+function tbl(){
+ const t=T(cur),cs=cols(t),all=rows(t),qq=q.toLowerCase();
+ const R=all.filter(r=>!qq||JSON.stringify(r).toLowerCase().includes(qq));
+ $("#cnt").textContent=R.length+" / "+all.length;
+ const last=t.flow?t.flow.length-1:0;
+ $("#tb").innerHTML="<tr>"+["#"].concat(cs.map(c=>c.l),[""]).map(h=>"<th>"+E(h)+"</th>").join("")+"</tr>"+
+ R.map((r,j)=>'<tr class="'+(t.flow&&stIdx(r)===last?"done":"")+'"><td>'+(j+1)+"</td>"+
+  cs.map(c=>"<td"+(c.n?' class="r"':"")+">"+E(c.v(r))+"</td>").join("")+'<td class="act">'+
+  (t.flow&&stIdx(r)<last?'<button class="sm" data-a="adv" data-id="'+r.id+'">&#9658; '+E(t.flow[stIdx(r)+1])+"</button>":"")+
+  '<button class="sm" data-a="edit" data-id="'+r.id+'">EDIT</button><button class="sm" data-a="del" data-id="'+r.id+'">X</button></td></tr>').join("");
+}
+
+function resetForm(){
+ const t=T(cur);edit=null;
+ inputF(t).forEach(f=>$("#f_"+f.k).value="");
+ $("#save").innerHTML="&#9658; ADD";$("#cancel").classList.add("hide");
+}
+
+function saveRec(){
+ const t=T(cur),v={};
+ for(const f of inputF(t)){
+  let x=$("#f_"+f.k).value.trim();
+  if(f.up)x=x.toUpperCase();
+  if(f.k==="veh")x=x.replace(/\s+/g,"");
+  if(f.req&&!x)return msg(f.l+" IS REQUIRED",0);
+  if(f.pat&&x&&!new RegExp("^"+f.pat+"$").test(x))return msg(f.l+" IS NOT VALID",0);
+  v[f.k]=f.t==="number"&&x!==""?+x:x;
+ }
+ t.fields.filter(f=>f.calc).forEach(f=>v[f.k]=f.calc(v));
+ const was=edit;let rec;
+ if(was){rec=raw(t).find(r=>r.id===was);Object.assign(rec,v)}
+ else{rec=Object.assign({id:uid(),ts:now(),st:0,by:S.me},v);raw(t).unshift(rec)}
+ touch(t.id,rec);resetForm();tbl();msg(was?"UPDATED":"SAVED",1);
+}
+
+function parseFields(s){
+ return s.split(",").map(x=>x.trim()).filter(Boolean).map((x,i)=>{
+  let n=x,o;if(x.includes(":")){const p=x.split(":");n=p[0];o=p[1].split("/").map(z=>z.trim().toUpperCase()).filter(Boolean)}
+  const num=n.trim().endsWith("#");if(num)n=n.trim().slice(0,-1);
+  return{k:"f"+i,l:n.trim().toUpperCase(),t:num?"number":"",o:o&&o.length?o:undefined,req:i===0?1:0};
+ }).filter(f=>f.l);
+}
+
+function newTool(){
+ const n=(prompt("TOOL NAME:")||"").trim().toUpperCase();if(!n)return;
+ const fs=parseFields(prompt("FIELDS, separated by commas.\n# after a name = number (QTY#)\n:A/B/C after a name = dropdown (TYPE:IN/OUT)\n\nExample: ITEM, QTY#, TYPE:IN/OUT")||"");
+ if(!fs.length)return msg("NO FIELDS GIVEN",0);
+ const fl=(prompt("STATUS STEPS (optional), e.g. OPEN,CLOSED\nLeave blank for none.")||"").split(",").map(x=>x.trim().toUpperCase()).filter(Boolean);
+ const nt={id:"c"+uid(),name:n,ic:"\u{1F5C2}",custom:1,fields:fs,flow:fl.length>1?fl:null};
+ S.custom.push(nt);touch("_tools",nt);home();
+}
+
+/* ============================ SYNC ============================ */
+function find(tool,id){
+ const a=tool==="_users"?S.users:tool==="_tools"?S.custom:tool==="_cfg"?[S.cfg]:S.data[tool]||[];
+ return a.find(x=>x&&x.id===id);
+}
+function put(a,r){const i=a.findIndex(x=>x.id===r.id);if(i<0)a.push(r);else a[i]=r}
+function apply(it){
+ const c=find(it.tool,it.id);if(c&&(c.upd||"")>=(it.upd||""))return;
+ const r=it.rec,t=it.tool;
+ if(t==="_users")put(S.users,r);else if(t==="_tools")put(S.custom,r);else if(t==="_cfg")S.cfg=r;
+ else{const a=S.data[t]||(S.data[t]=[]);put(a,r);a.sort((x,y)=>x.ts<y.ts?1:-1)}
+ delete S.dirty[it.id];
+}
+function syncSoon(){clearTimeout(tm);tm=setTimeout(doSync,800)}
+function refresh(){if(!S.me)return;if(cur)tbl();else if(page==="home")home();stat()}
+async function doSync(){
+ const c=S.sync;if(!c.url||!c.key||busy||!navigator.onLine){stat();return}
+ busy=1;err="";
+ try{
+  const ids=Object.keys(S.dirty);
+  if(ids.length){
+   const items=ids.map(id=>{
+    const tool=S.dirty[id],rec=find(tool,id);if(!rec)return null;
+    const it={id,tool,upd:rec.upd,rec},t=tools().find(x=>x.id===tool)||CONFIG.concat(S.custom).find(x=>x.id===tool);
+    if(t){it.tab=t.name.replace(/[\[\]:*?\/\\]/g,"").slice(0,90);if(rec.del)it.del=1;else{it.flat={};cols(t).forEach(k=>it.flat[k.l]=k.v(rec))}}
+    return it;
+   }).filter(Boolean);
+   const r=await(await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({key:c.key,items})})).json();
+   if(!r.ok)throw r.err;
+   items.forEach(it=>{const x=find(it.tool,it.id);if(!x||x.upd===it.upd)delete S.dirty[it.id]});
+  }
+  const g=await(await fetch(c.url+"?key="+encodeURIComponent(c.key)+"&since="+(S.since||0))).json();
+  if(!g.ok)throw g.err;
+  g.items.forEach(apply);g.items.forEach(i=>{S.since=Math.max(S.since||0,i.srv)});
+  if(!g.items.length&&!S.since)S.since=1;
+  syncedAt=now();
+ }catch(e){err=String(e)}
+ busy=0;save();checkMe();refresh();
+}
+function migrate(){
+ let ch=0;
+ Object.keys(S.data).forEach(k=>S.data[k].forEach(r=>{if(!r.upd){r.upd=r.ts||now();S.dirty[r.id]=k;ch=1}}));
+ S.custom.forEach(t=>{if(!t.upd){t.upd=now();S.dirty[t.id]="_tools";ch=1}});
+ if(ch)save();
+}
+
+/* ============================ ROUTING ============================ */
+function go(id){history.pushState(null,"",id?"?tool="+id:location.pathname);route()}
+function route(){
+ if(!S.me)login();
+ else{const k=new URLSearchParams(location.search).get("tool");k&&T(k)?view(k):home()}
+ stat();
+}
+window.onpopstate=route;
+
+/* ============================ EVENTS ============================ */
+document.addEventListener("click",async e=>{
+ const b=e.target.closest("button");if(!b)return;
+ if(b.dataset.u)return enter(b.dataset.u);
+ if(b.dataset.ua){const u=S.users.find(x=>x.id===b.dataset.id);u.rm=b.dataset.ua==="remove"?1:0;touch("_users",u);users();checkMe();return}
+ if(b.classList.contains("tile"))return go(b.dataset.k);
+ const a=b.dataset.a,id=b.dataset.id;
+ if(a){
+  const t=T(cur),r=raw(t).find(x=>x.id===id);if(!r)return;
+  if(a==="adv"){r.st=stIdx(r)+1;r["t"+r.st]=now();touch(t.id,r);tbl()}
+  if(a==="del"&&confirm("DELETE THIS RECORD?")){r.del=1;touch(t.id,r);tbl()}
+  if(a==="edit"){edit=id;inputF(t).forEach(f=>$("#f_"+f.k).value=r[f.k]==null?"":r[f.k]);
+   $("#save").innerHTML="&#9658; UPDATE";$("#cancel").classList.remove("hide");scrollTo(0,0)}
+  return;
+ }
+ const done=()=>msg(err?"SYNC FAILED: "+err+" (DATA SAFE ON THIS DEVICE)":"SYNC OK",!err);
+ switch(b.id){
+  case "back":go(null);break;
+  case "sw":logout();break;
+  case "nuGo":enter($("#nu").value);break;
+  case "setBtn":settings();break;
+  case "usr":if(await admin())users();break;
+  case "pin":if(await admin()){const p=prompt("NEW ADMIN PIN (4 OR MORE DIGITS):");if(p&&p.length>=4){S.cfg={id:"admin",pin:await hash(p)};touch("_cfg",S.cfg);msg("PIN CHANGED",1)}}break;
+  case "sSave":S.sync={url:$("#sUrl").value.trim(),key:$("#sKey").value.trim()};S.since=0;save();msg("SYNCING...",1);await doSync();done();break;
+  case "syncNow":if(!S.sync.url)return msg("SYNC NOT SET UP. OPEN SETTINGS.",0);msg("SYNCING...",1);await doSync();done();break;
+  case "save":saveRec();break;
+  case "cancel":resetForm();break;
+  case "exp":exportX([T(cur)],$("#sum").checked);break;
+  case "expAll":exportX(tools(),$("#sumAll").checked);break;
+  case "newT":newTool();break;
+  case "clr":if(confirm("DELETE ALL RECORDS IN THIS TOOL? EXPORT FIRST.")){rows(T(cur)).forEach(r=>{r.del=1;r.upd=now();S.dirty[r.id]=cur});save();syncSoon();tbl()}break;
+  case "delT":if(confirm("DELETE THIS TOOL AND ITS RECORDS?")){const t=T(cur);rows(t).forEach(r=>{r.del=1;r.upd=now();S.dirty[r.id]=t.id});t.del=1;touch("_tools",t);go(null)}break;
+  case "bak":{const x=document.createElement("a");
+   x.href=URL.createObjectURL(new Blob([JSON.stringify({v:2,data:S.data,custom:S.custom,users:S.users})],{type:"application/json"}));
+   x.download="PMJ_BACKUP_"+today()+".json";x.click();msg("BACKUP DOWNLOADED",1);break}
+  case "res":$("#file").click();break;
+ }
+});
+document.addEventListener("input",e=>{if(e.target.id==="q"){q=e.target.value;tbl()}});
+document.addEventListener("change",e=>{if(e.target.id==="ask"){S.ask=e.target.checked?1:0;if(S.ask)localStorage.removeItem("pmj_me");else if(S.me)localStorage.setItem("pmj_me",S.me);save()}});
+document.addEventListener("keydown",e=>{
+ if(e.key!=="Enter")return;const i=e.target.id||"";
+ if(i==="nu"){e.preventDefault();enter(e.target.value)}
+ else if(i.startsWith("f_")&&e.target.tagName==="INPUT"){e.preventDefault();saveRec()}
+});
+$("#file").onchange=e=>{
+ const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+ rd.onload=()=>{try{const j=JSON.parse(rd.result);if(!j.data)throw 0;
+  if(confirm("REPLACE ALL CURRENT DATA WITH THIS BACKUP?")){
+   S.data=j.data;S.custom=j.custom||[];S.users=j.users||S.users;S.dirty={};
+   Object.keys(S.data).forEach(k=>S.data[k].forEach(r=>{r.upd=now();S.dirty[r.id]=k}));
+   S.custom.forEach(t=>{t.upd=now();S.dirty[t.id]="_tools"});
+   S.users.forEach(u=>{u.upd=now();S.dirty[u.id]="_users"});
+   save();syncSoon();home();msg("RESTORED",1)}
+ }catch(x){msg("NOT A VALID BACKUP FILE",0)}};
+ rd.readAsText(f);e.target.value="";
+};
+
+/* ============================ START ============================ */
+migrate();route();doSync();
+setInterval(doSync,30000);
+addEventListener("online",doSync);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)doSync()});
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+
+</html>
