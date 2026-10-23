@@ -43,7 +43,16 @@ tr.done td{color:#006000}
 td.act{white-space:nowrap}
 .msg{margin-top:8px;padding:8px;border:2px dashed #000;text-align:center;font-weight:bold}
 .hide{display:none}
-.foot{font-size:12px}.who{font-weight:normal;font-size:12px;margin-left:auto;text-align:right}.sec{border-top:2px solid #808080;margin-top:10px;padding-top:6px}.ur{display:flex;justify-content:space-between;align-items:center;background:#fff;border:2px solid;border-color:#404040 #fff #fff #404040;padding:6px 8px;margin-top:4px}
+.foot{font-size:12px}
+.btn.on,.sm.on{background:#000080;color:#fff}.sm.go{background:#00a000;color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;padding:10px}
+.kpi{border:2px solid;border-color:#404040 #fff #fff #404040;background:#fff;padding:6px 8px}.kpi b{display:block;font-size:20px}.kpi small{font-size:11px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;align-items:center}.flt{display:flex;flex-wrap:wrap;gap:8px}.flt div{width:120px}
+.s-out{color:#c00000;font-weight:bold}.s-low{color:#b06000;font-weight:bold}.s-ok{color:#006000;font-weight:bold}.bar2{display:inline-block;height:8px;background:#000080;vertical-align:middle}
+.card{background:#fff;border:2px solid;border-color:#404040 #fff #fff #404040;border-left:6px solid #808080;padding:6px 8px;margin:6px 10px}
+.card.c-hi{border-left-color:#c00000}.card.c-op{border-left-color:#d08000}.card.c-ok{border-left-color:#00a000}.card p{margin:6px 0}
+.cr{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.tag{display:inline-block;background:#c0c0c0;border:1px solid #404040;padding:1px 6px;margin:2px 4px 2px 0;font-size:12px}
+details{margin:8px 0}summary{cursor:pointer;color:#000080}th.r{text-align:right}.who{font-weight:normal;font-size:12px;margin-left:auto;text-align:right}.sec{border-top:2px solid #808080;margin-top:10px;padding-top:6px}.ur{display:flex;justify-content:space-between;align-items:center;background:#fff;border:2px solid;border-color:#404040 #fff #fff #404040;padding:6px 8px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -67,17 +76,14 @@ td.act{white-space:nowrap}
    You can also add tools from the menu with  + NEW TOOL  (no coding).
    ===================================================================== */
 const CONFIG=[
-{id:"stock",name:"STOCK CHECKER",ic:"\u{1F4E6}",fields:[
- {k:"code",l:"ITEM CODE",req:1,up:1},{k:"item",l:"ITEM NAME"},{k:"loc",l:"LOCATION",g:1,up:1},
- {k:"sys",l:"SYSTEM QTY",t:"number"},{k:"phy",l:"PHYSICAL QTY",t:"number"},
- {k:"var",l:"VARIANCE",calc:r=>(+r.phy||0)-(+r.sys||0)},{k:"rem",l:"REMARKS"}]},
-{id:"vehicle",name:"VEHICLE ENTRY",ic:"\u{1F69A}",flow:["INSIDE","OUT"],fields:[
- {k:"veh",l:"VEHICLE NO",req:1,up:1},{k:"drv",l:"DRIVER"},{k:"ph",l:"PHONE",t:"tel",pat:"\\d{10}"},
- {k:"purpose",l:"PURPOSE",o:["LOADING","UNLOADING","VISIT","OTHER"]},{k:"party",l:"PARTY"},{k:"rem",l:"REMARKS"}]},
-{id:"issues",name:"DISCREPANCY TRACKER",ic:"\u{1F4DD}",flow:["OPEN","RESOLVED"],fields:[
- {k:"ref",l:"REF / INVOICE",req:1,up:1},{k:"party",l:"PARTY"},
- {k:"type",l:"TYPE",o:["SHORT","EXCESS","DAMAGE","WRONG ITEM","OTHER"]},
- {k:"qty",l:"QTY",t:"number"},{k:"desc",l:"DETAILS",t:"area"},{k:"by",l:"RAISED BY"}]},
+{id:"stock",name:"STOCK CHECKER",ic:"\u{1F4E6}",special:"stock",fields:[]},
+{id:"vehicle",name:"VEHICLE ENTRY",ic:"\u{1F69A}",special:"vehicle",fields:[
+ {k:"mv",l:"MOVEMENT",o:["LOADING","UNLOADING","SHIFTING"]},{k:"name",l:"NAME"},{k:"veh",l:"VEHICLE NO",req:1,up:1},
+ {k:"inv",l:"INVOICE NO"},{k:"qty",l:"QUANTITY (KG)",t:"number"}]},
+{id:"issues",name:"DISCREPANCY TRACKER",ic:"\u{1F4DD}",special:"issues",flow:["OPEN","RESOLVED"],fields:[
+ {k:"dno",l:"ID"},{k:"text",l:"DETAILS",t:"area"},{k:"pri",l:"PRIORITY",o:["HIGH","MEDIUM","LOW"]},
+ {k:"cat",l:"CATEGORY",o:["WEIGHT DIFFERENCE","SHORTAGE","EXCESS","DAMAGE","WRONG ITEM","DOCUMENT","OTHER"]},
+ {k:"owner",l:"OWNER"},{k:"veh",l:"VEHICLE NO"},{k:"inv",l:"INVOICE NO"}]},
 {id:"gate",name:"GATE LOG (NFC)",ic:"\u{1F6C2}",flow:["INSIDE","OUT","DELIVERED"],fields:[
  {k:"veh",l:"VEHICLE NO",req:1,up:1},{k:"ph",l:"PHONE",t:"tel",pat:"\\d{10}"},
  {k:"cust",l:"CUSTOMERS",t:"area"}]}
@@ -131,6 +137,7 @@ function exportX(list,withSum){
  if(typeof XLSX==="undefined")return msg("EXCEL LIBRARY NOT LOADED. CONNECT TO INTERNET ONCE AND RELOAD.",0);
  const wb=XLSX.utils.book_new(),nm=t=>t.name.replace(/[\[\]:*?\/\\]/g,"");
  list.forEach(t=>{
+  if(t.special==="stock"){stockSheets(wb,ST.rows,withSum);return}
   const cs=cols(t);
   const ws=XLSX.utils.aoa_to_sheet([cs.map(c=>c.l)].concat(rows(t).map(r=>cs.map(c=>c.v(r)))));
   ws["!cols"]=cs.map(c=>({wch:Math.max(c.l.length+2,14)}));
@@ -156,7 +163,7 @@ function stat(){
 function home(){
  cur=null;page="home";
  $("#app").innerHTML='<div class="win">'+hdr("C:\\PMJ\\TOOLS.EXE",0)+'<div class="grid">'+
- tools().map(t=>'<button class="tile" data-k="'+t.id+'"><span class="ic">'+t.ic+'</span>'+E(t.name)+'<small>'+rows(t).length+' RECORDS</small></button>').join("")+
+ tools().map(t=>'<button class="tile" data-k="'+t.id+'"><span class="ic">'+t.ic+'</span>'+E(t.name)+'<small>'+(t.special==="stock"?ST.rows.length+" BATCHES":rows(t).length+" RECORDS")+'</small></button>').join("")+
  '</div><div class="pad"><label class="chk"><input type="checkbox" id="sumAll" checked> INCLUDE SUMMARY SHEETS</label><br>'+
  '<button class="btn" id="expAll">EXPORT ALL TO EXCEL</button><button class="btn" id="newT">+ NEW TOOL</button>'+
  '<button class="btn" id="syncNow">SYNC NOW</button><button class="btn" id="bak">BACKUP</button><button class="btn" id="res">RESTORE</button>'+
@@ -187,7 +194,7 @@ function settings(){
  '<label>SECRET KEY</label><input id="sKey" type="password" value="'+E(S.sync.key||"")+'">'+
  '<button class="btn go" id="sSave">SAVE &amp; SYNC NOW</button><div id="msg" class="msg hide"></div>'+
  '<div class="sec"><label class="chk"><input type="checkbox" id="ask"'+(S.ask?" checked":"")+'> ASK NAME EVERY TIME THE APP IS OPENED (SHARED DEVICE)</label></div>'+
- '<div class="sec"><b>ADMIN</b><br><button class="btn" id="usr">MANAGE USERS</button><button class="btn" id="pin">CHANGE ADMIN PIN</button></div></div></div>';
+ '<div class="sec"><b>ADMIN</b><br><button class="btn" id="usr">MANAGE USERS</button><button class="btn" id="pin">CHANGE ADMIN PIN</button><button class="btn" id="stk">STOCK SHEET LINK</button></div></div></div>';
 }
 function ulist(rm){
  return S.users.filter(u=>!!u.rm===rm).sort((a,b)=>a.name<b.name?-1:1).map(u=>'<div class="ur"><span>'+E(u.name)+'</span><button class="sm" data-ua="'+(rm?"restore":"remove")+'" data-id="'+u.id+'">'+(rm?"RESTORE":"REMOVE")+"</button></div>").join("")||'<div class="foot">NONE</div>';
@@ -205,7 +212,7 @@ async function admin(){
  if(!S.cfg.pin){
   if(S.sync.url&&!S.since){alert("SYNC FIRST (SAVE & SYNC NOW), THEN TRY AGAIN.");return false}
   const p=prompt("NO ADMIN PIN YET. SET A PIN (4 OR MORE DIGITS):");if(!p||p.length<4)return false;
-  S.cfg={id:"admin",pin:await hash(p)};touch("_cfg",S.cfg);return true;
+  S.cfg=Object.assign({},S.cfg,{id:"admin",pin:await hash(p)});touch("_cfg",S.cfg);return true;
  }
  const p=prompt("ADMIN PIN:");return!!p&&(await hash(p))===S.cfg.pin;
 }
@@ -219,7 +226,7 @@ function field(f){
 }
 
 function view(id){
- cur=id;edit=null;q="";page="tool";const t=T(id);
+ cur=id;edit=null;q="";page="tool";const t=T(id);if(t.special){page=t.special;return({stock:stockView,vehicle:vehView,issues:issView})[t.special]()}
  $("#app").innerHTML='<div class="win">'+hdr(E(t.name),1)+
  '<div class="pad"><div id="fm">'+inputF(t).map(f=>"<div><label>"+E(f.l)+(f.req?" *":"")+"</label>"+field(f)+"</div>").join("")+"</div>"+
  '<button class="btn go" id="save">&#9658; ADD</button><button class="btn hide" id="cancel">CANCEL EDIT</button><div id="msg" class="msg hide"></div></div>'+
@@ -282,6 +289,315 @@ function newTool(){
  S.custom.push(nt);touch("_tools",nt);home();
 }
 
+/* ===================== STOCK CHECKER (live from Google Sheet) ===================== */
+const UN={kg:1,t:1000};
+const fmtN=n=>(Math.round(n*100)/100).toLocaleString("en-IN");
+const stN=s=>String(s).toLowerCase().replace(/[\s\-_]/g,"");
+const stNum=s=>{const m=String(s).trim().toLowerCase().match(/^(-?[\d.,]+)\s*(k|m)?$/);if(!m)return NaN;let n=parseFloat(m[1].replace(/,/g,""));if(m[2]==="k")n*=1e3;if(m[2]==="m")n*=1e6;return n};
+const sc0=L("pmj_stock",{}),ss0=L("pmj_st",{});
+let ST={rows:sc0.rows||[],at:sc0.at||"",q:"",vw:"batch",fam:[],stat:[],min:"",max:"",low:ss0.low==null?100:ss0.low,unit:ss0.unit||"kg",sort:"q",dir:-1,err:"",busy:0};
+const stSave=()=>{try{localStorage.setItem("pmj_st",JSON.stringify({low:ST.low,unit:ST.unit}))}catch(e){}};
+
+function csv(t){
+ const o=[];let r=[],f="",q=0;
+ for(let i=0;i<t.length;i++){const c=t[i];
+  if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=0}else f+=c}
+  else if(c==='"')q=1;
+  else if(c===","){r.push(f);f=""}
+  else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;r.push(f);f="";o.push(r);r=[]}
+  else f+=c}
+ if(f!==""||r.length){r.push(f);o.push(r)}
+ return o;
+}
+// Finds the Material / Batch / Stock columns by their header names (falls back to columns 1, 2, 3)
+function parseStock(txt){
+ const a=csv(txt).filter(r=>r.some(x=>x.trim()));if(!a.length)return[];
+ const h=a[0].map(x=>x.trim().toLowerCase());
+ const hasHead=h.some(x=>/batch|material|stock|qty|quantity|unrestricted/.test(x));
+ let mi=-1,bi=-1,qi=-1;
+ if(hasHead){
+  mi=h.findIndex(x=>/descr/.test(x));if(mi<0)mi=h.findIndex(x=>/material|item|product/.test(x));
+  bi=h.findIndex(x=>/batch/.test(x));qi=h.findIndex(x=>/unrestricted|stock|qty|quantity/.test(x));
+ }
+ if(mi<0)mi=0;if(bi<0)bi=1;if(qi<0)qi=2;
+ return a.slice(hasHead?1:0).map(r=>{
+  const m=(r[mi]||"").trim(),b=(r[bi]||"").trim(),q=parseFloat(String(r[qi]||"").replace(/[,\s]/g,""));
+  return{m,b,q:isNaN(q)?0:q,f:(m.split(/[\s\-_\/]+/)[0]||"?").toUpperCase()};
+ }).filter(x=>x.m||x.b);
+}
+function normUrl(u){
+ const m=u.match(/\/spreadsheets\/d\/([^\/]+)/);
+ if(m&&m[1]!=="e"){const g=u.match(/gid=(\d+)/);return"https://docs.google.com/spreadsheets/d/"+m[1]+"/gviz/tq?tqx=out:csv"+(g?"&gid="+g[1]:"")}
+ return u;
+}
+async function stockLoad(){
+ const u=S.cfg.stockUrl;
+ if(!u){ST.err="NO STOCK SHEET LINK SET. ADMIN: SETTINGS > STOCK SHEET LINK.";return stockRender()}
+ ST.err="";ST.busy=1;stockRender();
+ try{
+  const r=await fetch(normUrl(u),{cache:"no-store"});if(!r.ok)throw"HTTP "+r.status;
+  const rows=parseStock(await r.text());if(!rows.length)throw"NO ROWS FOUND IN THE SHEET";
+  ST.rows=rows;ST.at=now();
+  try{localStorage.setItem("pmj_stock",JSON.stringify({rows,at:ST.at}))}catch(e){}
+ }catch(e){ST.err="COULD NOT REFRESH ("+e+"). SHOWING LAST SAVED DATA."}
+ ST.busy=0;stockRender();
+}
+
+function stQuery(s){
+ const f={inc:[],exc:[],b:[],m:[],qty:[]};
+ s.trim().split(/\s+/).filter(Boolean).forEach(t=>{
+  let m,r;
+  if(m=t.match(/^batch:(.+)$/i))f.b.push(stN(m[1]));
+  else if(m=t.match(/^mat:(.+)$/i))f.m.push(stN(m[1]));
+  else if(m=t.match(/^qty:(.+)$/i)){const v=m[1];
+   if(r=v.match(/^(>=|<=|>|<|=)(.+)$/))f.qty.push([r[1],stNum(r[2])]);
+   else if(r=v.match(/^(.+)-(.+)$/))f.qty.push([">=",stNum(r[1])],["<=",stNum(r[2])]);
+   else f.qty.push(["=",stNum(v)]);
+  }
+  else if(t[0]==="-"&&t.length>1)f.exc.push(stN(t.slice(1)));
+  else{const n=stN(t);if(n)f.inc.push(n)}
+ });
+ return f;
+}
+function stPipe(mode){
+ const f=stQuery(ST.q),U=UN[ST.unit],lk=ST.low*U;
+ let a=ST.rows.filter(r=>{
+  const n=stN(r.m+r.b),m=stN(r.m),b=stN(r.b);
+  if(ST.fam.length&&!ST.fam.includes(r.f))return false;
+  if(f.exc.some(x=>n.includes(x)))return false;
+  return f.inc.every(x=>n.includes(x))&&f.b.every(x=>b.includes(x))&&f.m.every(x=>m.includes(x));
+ });
+ if(mode==="mat"){const g={};a.forEach(r=>{const x=g[r.m]||(g[r.m]={m:r.m,b:0,q:0,f:r.f});x.b++;x.q+=r.q});a=Object.values(g)}
+ const lo=ST.min===""?-Infinity:+ST.min,hi=ST.max===""?Infinity:+ST.max;
+ a=a.filter(r=>{const v=r.q/U;return v>=lo&&v<=hi&&f.qty.every(([o,n])=>isNaN(n)||(o===">"?v>n:o==="<"?v<n:o===">="?v>=n:o==="<="?v<=n:v===n))});
+ const st=q=>q<=0?"out":q<=lk?"low":"ok";
+ return{set:a,fin:ST.stat.length?a.filter(r=>ST.stat.includes(st(r.q))):a,st};
+}
+
+function stockView(){
+ cur="stock";page="stock";
+ $("#app").innerHTML='<div class="win">'+hdr("STOCK CHECKER",1)+'<div class="kpis" id="kp"></div>'+
+ '<div class="pad sec"><input id="st_q" placeholder="SEARCH MATERIAL OR BATCH..." autocomplete="off" value="'+E(ST.q)+'">'+
+ '<div class="foot">Ignores dashes and spaces (pa66g30 finds PA66-G30). Combine terms: <b>-ads</b> excludes, <b>batch:9013</b>, <b>mat:vicnyl</b>, <b>qty:&gt;1k</b>, <b>qty:100-500</b></div>'+
+ '<div class="chips"><button class="sm" data-vw="batch" id="vb">BATCHES</button><button class="sm" data-vw="mat" id="vm">MATERIALS</button><button class="sm" id="stClear">CLEAR ALL</button><button class="sm" id="stRefresh">&#8635; REFRESH</button></div>'+
+ '<div class="chips" id="fm2"></div>'+
+ '<div class="flt"><div><label>MIN STOCK</label><input id="st_min" type="number" inputmode="decimal" placeholder="0" value="'+E(ST.min)+'"></div>'+
+ '<div><label>MAX STOCK</label><input id="st_max" type="number" inputmode="decimal" placeholder="any" value="'+E(ST.max)+'"></div>'+
+ '<div><label>LOW-STOCK AT &lt;=</label><input id="st_low" type="number" inputmode="decimal" value="'+E(ST.low)+'"></div>'+
+ '<div><label>UNIT</label><select id="st_unit"><option value="kg"'+(ST.unit==="kg"?" selected":"")+'>kg</option><option value="t"'+(ST.unit==="t"?" selected":"")+'>tonnes</option></select></div></div>'+
+ '<div class="chips" id="stc"></div></div>'+
+ '<div class="pad tool"><b id="cnt"></b><button class="btn" id="stCopy">COPY RESULTS</button>'+
+ '<label class="chk"><input type="checkbox" id="stSum" checked> SUMMARY SHEET</label><button class="btn" id="stExp">EXPORT TO EXCEL</button></div>'+
+ '<div id="msg" class="msg hide" style="margin:0 10px 10px"></div><div class="wrap"><table id="stt"></table></div><div class="pad foot" id="stmsg"></div></div>';
+ stockRender();stockLoad();
+}
+
+function stockRender(){
+ if(page!=="stock"||!$("#kp"))return;
+ const U=UN[ST.unit],kb=stPipe("batch"),ks=kb.set,{fin}=stPipe(ST.vw);
+ const tot=ks.reduce((s,r)=>s+r.q,0),all=ST.rows.reduce((s,r)=>s+r.q,0);
+ const cnt=k=>ks.filter(r=>kb.st(r.q)===k).length,nm=s=>new Set(s.map(r=>r.m)).size;
+ $("#kp").innerHTML=[["TOTAL STOCK",fmtN(tot/U)+" "+ST.unit,"OF "+fmtN(all/U)+" OVERALL"],["MATERIALS",nm(ks),"OF "+nm(ST.rows)],
+  ["BATCHES",ks.length,"OF "+ST.rows.length],["LOW STOCK",cnt("low"),"BATCHES &lt;= "+E(ST.low)+" "+ST.unit],["OUT OF STOCK",cnt("out"),"BATCHES AT ZERO"]]
+  .map(k=>'<div class="kpi"><small>'+k[0]+"</small><b>"+k[1]+"</b><small>"+k[2]+"</small></div>").join("");
+ $("#vb").classList.toggle("on",ST.vw==="batch");$("#vm").classList.toggle("on",ST.vw==="mat");
+ const fc={};ST.rows.forEach(r=>fc[r.f]=(fc[r.f]||0)+1);
+ $("#fm2").innerHTML="<small>FAMILY:</small> "+Object.keys(fc).sort((a,b)=>fc[b]-fc[a]||(a<b?-1:1)).map(k=>'<button class="sm'+(ST.fam.includes(k)?" on":"")+'" data-fam="'+E(k)+'">'+E(k)+" "+fc[k]+"</button>").join("");
+ $("#stc").innerHTML=[["out","OUT OF STOCK"],["low","LOW"],["ok","HEALTHY"]].map(s=>'<button class="sm'+(ST.stat.includes(s[0])?" on":"")+'" data-stat="'+s[0]+'">'+s[1]+" "+cnt(s[0])+"</button>").join("");
+ const k=ST.sort,d=ST.dir;
+ const rs=fin.slice().sort((a,b)=>d*(k==="q"?a.q-b.q:String(a[k]).localeCompare(String(b[k]),undefined,{numeric:true})));
+ const mx=Math.max(1,rs.reduce((m,r)=>Math.max(m,r.q),0)),ar=x=>ST.sort===x?(d<0?" \u25BC":" \u25B2"):"";
+ $("#stt").innerHTML='<tr><th><button class="sm" data-sort="m">MATERIAL'+ar("m")+'</button></th><th><button class="sm" data-sort="b">'+(ST.vw==="mat"?"BATCHES":"BATCH")+ar("b")+
+  '</button></th><th class="r"><button class="sm" data-sort="q">STOCK ('+ST.unit+")"+ar("q")+"</button></th><th>STATUS</th></tr>"+
+  rs.slice(0,1000).map(r=>{const s=kb.st(r.q);return"<tr><td>"+E(r.m)+"</td><td>"+E(r.b)+'</td><td class="r"><span class="bar2" style="width:'+Math.round(Math.max(0,r.q)/mx*60)+'px"></span> <b>'+fmtN(r.q/U)+"</b></td><td class=\"s-"+s+'">'+({out:"OUT OF STOCK",low:"LOW",ok:"HEALTHY"})[s]+"</td></tr>"}).join("");
+ $("#cnt").textContent="SHOWING "+rs.length+" OF "+(ST.vw==="mat"?nm(ST.rows)+" MATERIALS":ST.rows.length+" BATCHES")+" - "+fmtN(rs.reduce((s,r)=>s+r.q,0)/U)+" "+ST.unit+(rs.length>1000?" (FIRST 1000 SHOWN)":"");
+ $("#stmsg").textContent=(ST.busy?"LOADING... ":"")+(ST.err?ST.err+" ":"")+(ST.at?"DATA UPDATED "+fmt(ST.at):"");
+}
+
+function stockClick(b){
+ const d=b.dataset,tg=(a,v)=>{const i=a.indexOf(v);i<0?a.push(v):a.splice(i,1)};
+ if(d.vw){ST.vw=d.vw;stockRender();return 1}
+ if(d.fam){tg(ST.fam,d.fam);stockRender();return 1}
+ if(d.stat){tg(ST.stat,d.stat);stockRender();return 1}
+ if(d.sort){ST.dir=ST.sort===d.sort?-ST.dir:(d.sort==="q"?-1:1);ST.sort=d.sort;stockRender();return 1}
+ switch(b.id){
+  case "stClear":ST.q="";ST.fam=[];ST.stat=[];ST.min="";ST.max="";["st_q","st_min","st_max"].forEach(i=>$("#"+i).value="");stockRender();return 1;
+  case "stRefresh":stockLoad();return 1;
+  case "stCopy":stCopy();return 1;
+  case "stExp":exportStock();return 1;
+ }
+ return 0;
+}
+function stCopy(){
+ const U=UN[ST.unit],rs=stPipe(ST.vw).fin;
+ const t=["MATERIAL\t"+(ST.vw==="mat"?"BATCHES":"BATCH")+"\tSTOCK ("+ST.unit+")"].concat(rs.map(r=>[r.m,r.b,r.q/U].join("\t"))).join("\n");
+ if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>msg("COPIED "+rs.length+" ROWS",1),()=>msg("COPY BLOCKED BY BROWSER",0));
+ else msg("COPY NOT SUPPORTED HERE",0);
+}
+function stockSheets(wb,list,withSum){
+ const lk=ST.low*UN[ST.unit],stt=q=>q<=0?"OUT OF STOCK":q<=lk?"LOW":"HEALTHY";
+ const ws=XLSX.utils.aoa_to_sheet([["MATERIAL","FAMILY","BATCH","STOCK (KG)","STATUS"]].concat(list.map(r=>[r.m,r.f,r.b,r.q,stt(r.q)])));
+ ws["!cols"]=[{wch:34},{wch:12},{wch:14},{wch:14},{wch:14}];
+ XLSX.utils.book_append_sheet(wb,ws,"STOCK CHECKER");
+ if(!withSum)return;
+ const sm=a=>a.reduce((s,r)=>s+r.q,0);
+ const o=[["STOCK CHECKER - SUMMARY"],["GENERATED",fmt(now())],["TOTAL STOCK (KG)",sm(list)],["BATCHES",list.length],["MATERIALS",new Set(list.map(r=>r.m)).size],["LOW-STOCK LEVEL (KG)",lk],[],["STATUS","BATCHES","STOCK (KG)"]];
+ ["OUT OF STOCK","LOW","HEALTHY"].forEach(s=>{const x=list.filter(r=>stt(r.q)===s);o.push([s,x.length,sm(x)])});
+ const fm={};list.forEach(r=>(fm[r.f]=fm[r.f]||[]).push(r));
+ o.push([],["FAMILY","BATCHES","STOCK (KG)"]);
+ Object.keys(fm).sort((a,b)=>sm(fm[b])-sm(fm[a])).forEach(k=>o.push([k,fm[k].length,sm(fm[k])]));
+ const s2=XLSX.utils.aoa_to_sheet(o);s2["!cols"]=[{wch:28},{wch:14},{wch:16}];
+ XLSX.utils.book_append_sheet(wb,s2,"SUM STOCK CHECKER");
+}
+function exportStock(){
+ if(typeof XLSX==="undefined")return msg("EXCEL LIBRARY NOT LOADED",0);
+ const wb=XLSX.utils.book_new();stockSheets(wb,stPipe("batch").fin,$("#stSum").checked);
+ XLSX.writeFile(wb,"PMJ_STOCK_"+today()+".xlsx");msg("EXPORTED (WHAT YOU SEE, IN KG)",1);
+}
+
+/* ===================== VEHICLE ENTRY + DISCREPANCY TRACKER ===================== */
+const pad2=n=>String(n).padStart(2,"0");
+const ldate=d=>d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+const ltime=d=>pad2(d.getHours())+":"+pad2(d.getMinutes());
+const dur=ms=>{ms=Math.max(0,ms||0);const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5);return d?d+"d "+h+"h":h+"h "+Math.floor(ms%36e5/6e4)+"m"};
+let VS={mv:"LOADING",tab:"cur",q:"",per:"7",edit:null},IS={tab:"open",q:"",edit:null};
+
+/* ---------- VEHICLE ENTRY ---------- */
+function vehView(){
+ cur="vehicle";page="vehicle";VS.edit=null;VS.q="";
+ $("#app").innerHTML='<div class="win">'+hdr("VEHICLE ENTRY",1)+'<div class="pad"><label>MOVEMENT TYPE</label><div class="chips" id="vmv"></div>'+
+ '<div id="fm"><div><label>NAME</label><input id="v_name" autocomplete="off" autocapitalize="characters"></div>'+
+ '<div><label>VEHICLE NO *</label><input id="v_veh" autocomplete="off" autocapitalize="characters"></div>'+
+ '<div><label>INVOICE NO</label><input id="v_inv" autocomplete="off" autocapitalize="characters"></div>'+
+ '<div><label>QUANTITY (KG) *</label><input id="v_qty" type="number" step="any" inputmode="decimal" placeholder="0"></div>'+
+ '<div><label>DATE</label><input id="v_date" type="date"></div><div><label>TIME</label><input id="v_time" type="time"></div></div>'+
+ '<button class="btn go" id="vSave">&#9658; SAVE ENTRY</button><button class="btn hide" id="rCancel">CANCEL EDIT</button><div id="msg" class="msg hide"></div></div>'+
+ '<div class="pad tool"><button class="btn" data-tab="cur" id="vt1">CURRENT ENTRIES</button><button class="btn" data-tab="his" id="vt2">HISTORY (ALL)</button></div>'+
+ '<div class="pad tool"><input id="v_q" placeholder="SEARCH VEHICLE, INVOICE, NAME..." style="width:250px" autocomplete="off">'+
+ '<select id="v_per" style="width:auto"><option value="1">TODAY</option><option value="7">LAST 7 DAYS</option><option value="30">LAST 30 DAYS</option><option value="0">ALL TIME</option></select>'+
+ '<label class="chk"><input type="checkbox" id="rSum" checked> SUMMARY SHEET</label><button class="btn" id="rExp">EXPORT TO EXCEL</button></div>'+
+ '<div class="pad"><b id="vsum"></b></div><div id="vlist"></div></div>';
+ $("#v_per").value=VS.per;vehReset();vehRender();
+}
+function vehReset(){
+ VS.edit=null;["v_name","v_veh","v_inv","v_qty"].forEach(i=>$("#"+i).value="");
+ const d=new Date();$("#v_date").value=ldate(d);$("#v_time").value=ltime(d);
+ $("#vSave").innerHTML="&#9658; SAVE ENTRY";$("#rCancel").classList.add("hide");
+}
+function vehSave(){
+ const g=i=>$("#"+i).value.trim(),veh=g("v_veh").toUpperCase().replace(/\s+/g,""),qty=+g("v_qty"),ts=new Date(g("v_date")+"T"+g("v_time"));
+ if(veh.length<4)return msg("ENTER VEHICLE NO",0);
+ if(!(qty>0))return msg("ENTER QUANTITY IN KG",0);
+ if(isNaN(ts))return msg("DATE / TIME NOT VALID",0);
+ const v={mv:VS.mv,name:g("v_name").toUpperCase(),veh,inv:g("v_inv").toUpperCase(),qty},t=T("vehicle"),was=VS.edit;let rec;
+ if(was){rec=raw(t).find(r=>r.id===was);Object.assign(rec,v,{ts:ts.toISOString()})}
+ else{rec=Object.assign({id:uid(),ts:ts.toISOString(),st:0,by:S.me},v);raw(t).unshift(rec)}
+ touch(t.id,rec);vehReset();vehRender();msg(was?"UPDATED":"SAVED",1);
+}
+function vehEdit(r){
+ VS.edit=r.id;VS.mv=r.mv||"LOADING";["name","veh","inv","qty"].forEach(k=>$("#v_"+k).value=r[k]==null?"":r[k]);
+ const d=new Date(r.ts);$("#v_date").value=ldate(d);$("#v_time").value=ltime(d);
+ $("#vSave").innerHTML="&#9658; UPDATE";$("#rCancel").classList.remove("hide");vehRender();scrollTo(0,0);
+}
+function vehRender(){
+ if(page!=="vehicle"||!$("#vlist"))return;
+ const t=T("vehicle"),q=VS.q.toLowerCase(),his=VS.tab==="his";
+ const cut=his||VS.per==="0"?0:new Date().setHours(0,0,0,0)-(+VS.per-1)*864e5;
+ const R=rows(t).filter(r=>new Date(r.ts)>=cut&&(!q||[r.veh,r.inv,r.name,r.mv].join(" ").toLowerCase().includes(q))).sort((a,b)=>a.ts<b.ts?1:-1);
+ $("#vmv").innerHTML=["LOADING","UNLOADING","SHIFTING"].map(m=>'<button class="btn'+(VS.mv===m?" on":"")+'" data-mv="'+m+'">'+m+"</button>").join("");
+ $("#vt1").classList.toggle("on",!his);$("#vt2").classList.toggle("on",his);
+ $("#v_per").style.visibility=his?"hidden":"visible";
+ const s=m=>R.filter(r=>r.mv===m).reduce((a,r)=>a+(+r.qty||0),0);
+ $("#vsum").textContent=R.length+" ENTRIES - LOADING "+fmtN(s("LOADING"))+" KG - UNLOADING "+fmtN(s("UNLOADING"))+" KG"+(s("SHIFTING")?" - SHIFTING "+fmtN(s("SHIFTING"))+" KG":"");
+ $("#vlist").innerHTML=R.slice(0,300).map(r=>'<div class="card"><div class="cr"><b>'+E(r.veh)+(r.name?" - "+E(r.name):"")+"</b><b>"+fmtN(r.qty||0)+' KG</b></div>'+
+  '<div class="cr foot"><span>'+fmt(r.ts)+(r.inv?" - INV "+E(r.inv):"")+(r.by?" - "+E(r.by):"")+"</span><b>"+E(r.mv)+"</b></div>"+
+  '<button class="sm" data-x="edit" data-r="'+r.id+'">EDIT</button><button class="sm" data-x="del" data-r="'+r.id+'">X</button></div>').join("")||'<div class="pad foot">NO ENTRIES</div>';
+}
+
+/* ---------- DISCREPANCY TRACKER ---------- */
+function issView(){
+ cur="issues";page="issues";IS.edit=null;IS.q="";
+ const f=T("issues").fields,opt=k=>f.find(x=>x.k===k).o.map(o=>"<option>"+E(o)+"</option>").join("");
+ $("#app").innerHTML='<div class="win">'+hdr("DISCREPANCY TRACKER",1)+'<div class="pad"><label>WHAT\'S THE DISCREPANCY? WRITE IT ROUGHLY.</label>'+
+ '<textarea id="i_text" rows="4" placeholder="e.g. Loaded 25 MT but plan was 24 MT, customer called at gate"></textarea>'+
+ '<details><summary><b>ADD VEHICLE, INVOICE, CATEGORY, PRIORITY, OWNER (OPTIONAL)</b></summary><div id="fm">'+
+ '<div><label>VEHICLE NO</label><input id="i_veh" autocomplete="off" autocapitalize="characters"></div>'+
+ '<div><label>INVOICE NO</label><input id="i_inv" autocomplete="off" autocapitalize="characters"></div>'+
+ '<div><label>CATEGORY</label><select id="i_cat"><option value=""></option>'+opt("cat")+"</select></div>"+
+ '<div><label>PRIORITY</label><select id="i_pri">'+opt("pri")+"</select></div>"+
+ '<div><label>OWNER</label><input id="i_owner" autocomplete="off" autocapitalize="characters"></div></div></details>'+
+ '<button class="btn go" id="iSave">LOG DISCREPANCY</button><button class="btn hide" id="rCancel">CANCEL EDIT</button><div id="msg" class="msg hide"></div></div>'+
+ '<div class="kpis" id="ik"></div>'+
+ '<div class="pad tool"><button class="btn" data-tab="open" id="it1">OPEN</button><button class="btn" data-tab="res" id="it2">RESOLVED</button><button class="btn" data-tab="all" id="it3">ALL</button><button class="btn" data-tab="sum" id="it4">SUMMARY</button></div>'+
+ '<div class="pad tool"><input id="i_q" placeholder="SEARCH DETAILS, VEHICLE, INVOICE, OWNER, CATEGORY..." style="width:320px" autocomplete="off">'+
+ '<label class="chk"><input type="checkbox" id="rSum" checked> SUMMARY SHEET</label><button class="btn" id="rExp">EXPORT TO EXCEL</button></div><div id="ilist"></div></div>';
+ issReset();issRender();
+}
+function issReset(){
+ IS.edit=null;["i_text","i_veh","i_inv","i_owner"].forEach(i=>$("#"+i).value="");$("#i_cat").value="";$("#i_pri").value="MEDIUM";
+ $("#iSave").innerHTML="LOG DISCREPANCY";$("#rCancel").classList.add("hide");
+}
+function issSave(){
+ const g=i=>$("#"+i).value.trim();if(!g("i_text"))return msg("WRITE THE DISCREPANCY FIRST",0);
+ const v={text:g("i_text"),veh:g("i_veh").toUpperCase().replace(/\s+/g,""),inv:g("i_inv").toUpperCase(),cat:g("i_cat"),pri:g("i_pri"),owner:g("i_owner").toUpperCase()},t=T("issues"),was=IS.edit;let rec;
+ if(was){rec=raw(t).find(r=>r.id===was);Object.assign(rec,v)}
+ else{
+  const n=raw(t).reduce((m,r)=>Math.max(m,parseInt(String(r.dno||"").slice(2))||0),0)+1;
+  rec=Object.assign({id:uid(),ts:now(),st:0,by:S.me,dno:"D-"+String(n).padStart(4,"0")},v);raw(t).unshift(rec);
+ }
+ touch(t.id,rec);issReset();issRender();msg(was?"UPDATED":"LOGGED "+rec.dno,1);
+}
+function issEdit(r){
+ IS.edit=r.id;$("#i_text").value=r.text||"";["veh","inv","owner"].forEach(k=>$("#i_"+k).value=r[k]||"");
+ $("#i_cat").value=r.cat||"";$("#i_pri").value=r.pri||"MEDIUM";document.querySelector("details").open=true;
+ $("#iSave").innerHTML="UPDATE";$("#rCancel").classList.remove("hide");scrollTo(0,0);
+}
+function issSum(R){
+ const grp=(k,lab)=>{const m={};R.forEach(r=>{const x=r[k]||"(NONE)";(m[x]=m[x]||[0,0])[r.st?1:0]++});
+  return'<div class="pad"><b>BY '+lab+'</b><table><tr><th>'+lab+'</th><th class="r">OPEN</th><th class="r">RESOLVED</th><th class="r">TOTAL</th></tr>'+
+  Object.keys(m).sort().map(x=>"<tr><td>"+E(x)+'</td><td class="r">'+m[x][0]+'</td><td class="r">'+m[x][1]+'</td><td class="r">'+(m[x][0]+m[x][1])+"</td></tr>").join("")+"</table></div>"};
+ const dn=R.filter(r=>r.st&&r.t1),av=dn.length?dur(dn.reduce((s,r)=>s+(new Date(r.t1)-new Date(r.ts)),0)/dn.length):"-";
+ return'<div class="pad"><b>TOTAL '+R.length+" - OPEN "+R.filter(r=>!r.st).length+" - RESOLVED "+dn.length+" - AVG TIME TO RESOLVE "+av+"</b></div>"+grp("pri","PRIORITY")+grp("cat","CATEGORY")+grp("owner","OWNER");
+}
+function issRender(){
+ if(page!=="issues"||!$("#ilist"))return;
+ const t=T("issues"),all=rows(t),td=ldate(new Date()),q=IS.q.toLowerCase(),op=all.filter(r=>!r.st);
+ $("#ik").innerHTML=[["OPEN",op.length],["RESOLVED TODAY",all.filter(r=>r.st&&r.t1&&ldate(new Date(r.t1))===td).length],["HIGH PRIORITY OPEN",op.filter(r=>r.pri==="HIGH").length]]
+  .map(k=>'<div class="kpi"><small>'+k[0]+"</small><b>"+k[1]+"</b></div>").join("");
+ ["open","res","all","sum"].forEach((k,i)=>$("#it"+(i+1)).classList.toggle("on",IS.tab===k));
+ if(IS.tab==="sum"){$("#ilist").innerHTML=issSum(all);return}
+ const R=all.filter(r=>(IS.tab==="all"||(IS.tab==="open")===!r.st)&&(!q||[r.dno,r.text,r.veh,r.inv,r.owner,r.cat,r.pri].join(" ").toLowerCase().includes(q))).sort((a,b)=>a.ts<b.ts?1:-1);
+ $("#ilist").innerHTML=R.map(r=>{
+  const o=!r.st,age=o?"OPEN FOR "+dur(Date.now()-new Date(r.ts)):"RESOLVED "+fmt(r.t1)+" - TOOK "+dur(new Date(r.t1)-new Date(r.ts));
+  return'<div class="card '+(o?(r.pri==="HIGH"?"c-hi":"c-op"):"c-ok")+'"><div class="cr"><b>'+E(r.dno)+'</b><span class="foot">LOGGED '+fmt(r.ts)+(r.by?" BY "+E(r.by):"")+"</span></div><div>"+
+   [r.pri,r.cat,r.owner&&"OWNER: "+r.owner,r.veh,r.inv&&"INV "+r.inv].filter(Boolean).map(x=>'<span class="tag">'+E(x)+"</span>").join("")+"</div><p>"+E(r.text)+'</p><div class="'+(o?"s-low":"s-ok")+'">'+age+"</div>"+
+   (o?'<button class="sm go" data-x="res" data-r="'+r.id+'">MARK RESOLVED</button>':'<button class="sm" data-x="open" data-r="'+r.id+'">REOPEN</button>')+
+   '<button class="sm" data-x="edit" data-r="'+r.id+'">EDIT</button><button class="sm" data-x="del" data-r="'+r.id+'">X</button></div>';
+ }).join("")||'<div class="pad foot">NOTHING HERE</div>';
+}
+
+/* ---------- shared click handling for both pages ---------- */
+function recClick(b){
+ const d=b.dataset,vh=page==="vehicle";
+ if(d.mv){VS.mv=d.mv;vehRender();return 1}
+ if(d.tab){if(vh){VS.tab=d.tab;vehRender()}else{IS.tab=d.tab;issRender()}return 1}
+ if(d.x){
+  const t=T(cur),r=raw(t).find(x=>x.id===d.r);if(!r)return 1;
+  if(d.x==="edit"){if(vh)vehEdit(r);else issEdit(r);return 1}
+  if(d.x==="del"){if(!confirm("DELETE THIS ENTRY?"))return 1;r.del=1}
+  else if(d.x==="res"){r.st=1;r.t1=now()}
+  else if(d.x==="open"){r.st=0;delete r.t1}
+  touch(t.id,r);if(vh)vehRender();else issRender();return 1;
+ }
+ switch(b.id){
+  case "vSave":vehSave();return 1;
+  case "iSave":issSave();return 1;
+  case "rCancel":if(vh)vehReset();else issReset();return 1;
+  case "rExp":exportX([T(cur)],$("#rSum").checked);return 1;
+ }
+ return 0;
+}
+
 /* ============================ SYNC ============================ */
 function find(tool,id){
  const a=tool==="_users"?S.users:tool==="_tools"?S.custom:tool==="_cfg"?[S.cfg]:S.data[tool]||[];
@@ -296,7 +612,7 @@ function apply(it){
  delete S.dirty[it.id];
 }
 function syncSoon(){clearTimeout(tm);tm=setTimeout(doSync,800)}
-function refresh(){if(!S.me)return;if(cur)tbl();else if(page==="home")home();stat()}
+function refresh(){if(!S.me)return;if(page==="stock")stockRender();else if(page==="vehicle")vehRender();else if(page==="issues")issRender();else if(cur)tbl();else if(page==="home")home();stat()}
 async function doSync(){
  const c=S.sync;if(!c.url||!c.key||busy||!navigator.onLine){stat();return}
  busy=1;err="";
@@ -342,6 +658,8 @@ document.addEventListener("click",async e=>{
  const b=e.target.closest("button");if(!b)return;
  if(b.dataset.u)return enter(b.dataset.u);
  if(b.dataset.ua){const u=S.users.find(x=>x.id===b.dataset.id);u.rm=b.dataset.ua==="remove"?1:0;touch("_users",u);users();checkMe();return}
+ if(page==="stock"&&stockClick(b))return;
+ if((page==="vehicle"||page==="issues")&&recClick(b))return;
  if(b.classList.contains("tile"))return go(b.dataset.k);
  const a=b.dataset.a,id=b.dataset.id;
  if(a){
@@ -358,8 +676,10 @@ document.addEventListener("click",async e=>{
   case "sw":logout();break;
   case "nuGo":enter($("#nu").value);break;
   case "setBtn":settings();break;
+  case "stk":if(await admin()){const u=prompt("PASTE THE STOCK GOOGLE SHEET LINK.\n(File > Share > Publish to web > CSV, or a sheet link shared as 'anyone with the link can view')",S.cfg.stockUrl||"");
+   if(u!==null){S.cfg=Object.assign({},S.cfg,{id:"admin",stockUrl:u.trim()});touch("_cfg",S.cfg);msg("STOCK LINK SAVED",1)}}break;
   case "usr":if(await admin())users();break;
-  case "pin":if(await admin()){const p=prompt("NEW ADMIN PIN (4 OR MORE DIGITS):");if(p&&p.length>=4){S.cfg={id:"admin",pin:await hash(p)};touch("_cfg",S.cfg);msg("PIN CHANGED",1)}}break;
+  case "pin":if(await admin()){const p=prompt("NEW ADMIN PIN (4 OR MORE DIGITS):");if(p&&p.length>=4){S.cfg=Object.assign({},S.cfg,{id:"admin",pin:await hash(p)});touch("_cfg",S.cfg);msg("PIN CHANGED",1)}}break;
   case "sSave":S.sync={url:$("#sUrl").value.trim(),key:$("#sKey").value.trim()};S.since=0;save();msg("SYNCING...",1);await doSync();done();break;
   case "syncNow":if(!S.sync.url)return msg("SYNC NOT SET UP. OPEN SETTINGS.",0);msg("SYNCING...",1);await doSync();done();break;
   case "save":saveRec();break;
@@ -375,7 +695,12 @@ document.addEventListener("click",async e=>{
   case "res":$("#file").click();break;
  }
 });
-document.addEventListener("input",e=>{if(e.target.id==="q"){q=e.target.value;tbl()}});
+document.addEventListener("input",e=>{const i=e.target.id||"";
+ if(i==="q"){q=e.target.value;tbl()}
+ else if(i.startsWith("st_")){ST.q=$("#st_q").value;ST.min=$("#st_min").value;ST.max=$("#st_max").value;ST.low=+$("#st_low").value||0;ST.unit=$("#st_unit").value;stSave();stockRender()}
+ else if(i==="v_q"||i==="v_per"){VS.q=$("#v_q").value;VS.per=$("#v_per").value;vehRender()}
+ else if(i==="i_q"){IS.q=e.target.value;issRender()}
+});
 document.addEventListener("change",e=>{if(e.target.id==="ask"){S.ask=e.target.checked?1:0;if(S.ask)localStorage.removeItem("pmj_me");else if(S.me)localStorage.setItem("pmj_me",S.me);save()}});
 document.addEventListener("keydown",e=>{
  if(e.key!=="Enter")return;const i=e.target.id||"";
@@ -397,6 +722,7 @@ $("#file").onchange=e=>{
 
 /* ============================ START ============================ */
 migrate();route();doSync();
+setInterval(()=>{if(page==="stock")stockLoad()},300000);
 setInterval(doSync,30000);
 addEventListener("online",doSync);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)doSync()});
